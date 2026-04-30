@@ -76,7 +76,11 @@ export default function Dashboard() {
     }
 
     // Cobrar 10 créditos para enseñar
-    await supabase.from("profiles").update({ credits: credits - 10 }).eq("id", user.id);
+    const { error: updateError } = await supabase.from("profiles").update({ credits: credits - 10 }).eq("id", user.id);
+    if (updateError) {
+      console.error("Error cobrando créditos:", updateError);
+      alert("Hubo un problema actualizando tus créditos. Revisa la consola.");
+    }
 
     // Vamos directo a la sala
     router.push(`/room/${room.id}`);
