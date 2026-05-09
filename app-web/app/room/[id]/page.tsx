@@ -2,35 +2,43 @@
 
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ExternalLink, CheckCircle } from "lucide-react";
 
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const unwrappedParams = use(params);
 
-  // Truco Vibecoding Supremo: 
-  // Jitsi Meet es un software Open Source (Código Abierto) que no requiere API Keys
-  // No hay tarjetas de crédito, ni límites de tiempo ni registros. 
-  // Solo con mandar el ID de la sala que generó Supabase, crea un cuarto de video para ambos.
-  const jitsiRoomUrl = `https://meet.jit.si/EfectoProtege-${unwrappedParams.id}`;
+  // Usamos el servidor alemán libre de Jitsi.
+  const jitsiRoomUrl = `https://meet.ffmuc.net/EfectoProtege-${unwrappedParams.id}`;
 
   return (
-    <main className="h-screen bg-zinc-950 text-white flex flex-col relative p-4">
-      {/* Botón superior de salida */}
-      <button 
-        onClick={() => router.push("/")}
-        className="absolute top-6 left-6 z-10 flex items-center bg-black/80 px-4 py-2 rounded-full text-zinc-300 hover:text-white transition shadow-lg border border-zinc-800"
-      >
-        <ArrowLeft className="mr-2" size={20} /> Salir y cobrar créditos
-      </button>
+    <main className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-6 relative">
+      <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center shadow-2xl">
+        <h2 className="text-2xl font-bold mb-4">Sala Generada</h2>
+        <p className="text-zinc-400 mb-8">
+          Para evitar problemas de permisos de cámara en el celular, la llamada de video se abrirá de forma segura en una nueva pestaña.
+        </p>
+        
+        <a 
+          href={jitsiRoomUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl mb-8 transition-all shadow-lg"
+        >
+          <ExternalLink className="mr-2" size={24} />
+          Abrir Videollamada
+        </a>
 
-      {/* Frame de Videollamada de Altísimo rendimiento (Jitsi Meet) */}
-      <div className="flex-1 w-full mt-16 bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl relative border border-zinc-800">
-        <iframe
-          src={jitsiRoomUrl}
-          allow="camera; microphone; fullscreen; display-capture; autoplay"
-          className="w-full h-full border-none"
-        />
+        <hr className="border-zinc-800 mb-8" />
+
+        <p className="text-sm text-zinc-500 mb-4">¿Terminaste de explicar o escuchar?</p>
+        <button 
+          onClick={() => router.push("/")}
+          className="flex items-center justify-center w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold py-3 px-6 rounded-xl transition-all"
+        >
+          <CheckCircle className="mr-2 text-green-400" size={20} />
+          Finalizar y actualizar créditos 
+        </button>
       </div>
     </main>
   );

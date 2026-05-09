@@ -91,12 +91,13 @@ export default function Dashboard() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 2. Buscar cualquier sala en estado "waiting"
+    // 2. Buscar cualquier sala en estado "waiting" (La MÁS RECIENTE primero)
     const { data: roomList, error } = await supabase
       .from("rooms")
       .select("*")
       .eq("status", "waiting")
       .neq("host_id", user.id) // ¡No queremos conectarnos con nosotros mismos!
+      .order("created_at", { ascending: false })
       .limit(1);
 
     if (error || !roomList || roomList.length === 0) {
