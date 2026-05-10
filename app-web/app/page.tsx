@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Coins, Ear, Mic, LogOut } from "lucide-react";
+import { User, Coins, Ear, Mic, LogOut, Earth } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
