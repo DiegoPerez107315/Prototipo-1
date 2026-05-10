@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Coins, Ear, Mic, LogOut, Earth } from "lucide-react";
+import { User, Coins, Ear, Mic, LogOut, X, FileText, Image as ImageIcon, Brush, UploadCloud } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
@@ -8,6 +8,12 @@ import { useRouter } from "next/navigation";
 export default function Dashboard() {
   const [credits, setCredits] = useState<number | null>(null);
   const [userEmail, setUserEmail] = useState<string>("");
+  const [isTeachModalOpen, setIsTeachModalOpen] = useState(false);
+  const [topicInput, setTopicInput] = useState("");
+  const [resourceType, setResourceType] = useState<"none" | "image" | "pdf">("none");
+  const [resourceFile, setResourceFile] = useState<File | null>(null);
+  const [teachError, setTeachError] = useState("");
+  const [teachLoading, setTeachLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -50,39 +56,129 @@ export default function Dashboard() {
     router.push("/login");
   };
 
-  const handleTeach = async () => {
+  const handleTeach = () => {
     if (credits === null || credits < 10) {
       alert("Necesitas al menos 10 créditos para enseñar y crear una sala.");
       return;
     }
+    setTeachError("");
+    setTopicInput("");
+    setResourceType("none");
+    setResourceFile(null);
+    setIsTeachModalOpen(true);
+  };
 
-    const topic = window.prompt("¿Qué tema quieres enseñar hoy?");
-    if (!topic) return;
+  const handleCreateRoom = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setTeachLoading(true);
+    setTeachError("");
+
+    const topic = topicInput.trim();
+    if (!topic) {
+      setTeachError("Escribe un tema para poder crear la sala.");
+      setTeachLoading(false);
+      return;
+    }
+
+    if (resourceType !== "none" && !resourceFile) {
+      setTeachError("Selecciona un archivo PDF o una imagen para continuar.");
+      setTeachLoading(false);
+      return;
+    }
+
+    if (resourceType === "image" && resourceFile && !resourceFile.type.startsWith("image/")) {
+      setTeachError("El archivo debe ser una imagen válida.");
+      setTeachLoading(false);
+      return;
+    }
+
+    if (resourceType === "pdf" && resourceFile && resourceFile.type !== "application/pdf") {
+      setTeachError("El archivo debe ser un PDF válido.");
+      setTeachLoading(false);
+      return;
+    }
+
+    if (credits === null || credits < 10) {
+      setTeachError("Necesitas al menos 10 créditos para enseñar y crear una sala.");
+      setTeachLoading(false);
+      return;
+    }
 
     // Obtener mis datos
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    let resourceUrl: string | null = null;
+    let resourceName: string | null = null;
+
+    if (resourceType !== "none" && resourceFile) {
+      const safeName = resourceFile.name.replace(/\s+/g, "-").toLowerCase();
+      const filePath = `${user.id}/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("room-assets")
+        .upload(filePath, resourceFile);
+
+      if (uploadError) {
+        setTeachError("No pudimos subir tu archivo. Revisa el bucket 'room-assets' en Supabase.");
+        setTeachLoading(false);
+        return;
+      }
+
+      const { data: publicData } = supabase.storage.from("room-assets").getPublicUrl(filePath);
+      resourceUrl = publicData.publicUrl;
+      resourceName = resourceFile.name;
+    }
+
+    const basePayload = { topic: topic, host_id: user.id, status: "waiting" };
+    const payload = resourceUrl
+      ? { ...basePayload, resource_url: resourceUrl, resource_type: resourceType, resource_name: resourceName }
+      : basePayload;
+
     // Crear la sala en Supabase
     const { data: room, error } = await supabase
       .from("rooms")
-      .insert({ topic: topic, host_id: user.id, status: "waiting" })
+      .insert(payload)
       .select()
       .single();
 
     if (error) {
-      alert("Error al crear la sala: " + error.message);
+      const payloadWithoutResource = { topic: topic, host_id: user.id, status: "waiting" };
+      if (resourceUrl && error.message.includes("column")) {
+        const { data: fallbackRoom, error: fallbackError } = await supabase
+          .from("rooms")
+          .insert(payloadWithoutResource)
+          .select()
+          .single();
+
+        if (fallbackError) {
+          setTeachError("Error al crear la sala: " + fallbackError.message);
+          setTeachLoading(false);
+          return;
+        }
+
+        setTeachError("Tu base de datos no tiene columnas para recursos. Agrega resource_url, resource_type y resource_name en rooms.");
+        setIsTeachModalOpen(false);
+        setTeachLoading(false);
+        router.push(`/room/${fallbackRoom.id}`);
+        return;
+      }
+
+      setTeachError("Error al crear la sala: " + error.message);
+      setTeachLoading(false);
       return;
     }
 
     // Cobrar 10 créditos para enseñar
-    const { error: updateError } = await supabase.from("profiles").update({ credits: credits - 10 }).eq("id", user.id);
+    const updatedCredits = credits - 10;
+    const { error: updateError } = await supabase.from("profiles").update({ credits: updatedCredits }).eq("id", user.id);
     if (updateError) {
       console.error("Error cobrando créditos:", updateError);
       alert("Hubo un problema actualizando tus créditos. Revisa la consola.");
     }
 
     // Vamos directo a la sala
+    setIsTeachModalOpen(false);
+    setTeachLoading(false);
     router.push(`/room/${room.id}`);
   };
 
@@ -211,6 +307,116 @@ export default function Dashboard() {
         </button>
         
       </div>
+
+      {isTeachModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-gray-100 relative">
+            <button
+              onClick={() => setIsTeachModalOpen(false)}
+              className="absolute right-5 top-5 text-gray-400 hover:text-gray-700"
+              aria-label="Cerrar"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="mb-6">
+              <h3 className="text-2xl font-bold text-gray-900">Preparar clase</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Escribe tu tema y agrega recursos opcionales. La whiteboard siempre estara lista en la sala.
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateRoom} className="space-y-5">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Tema de la sesion</label>
+                <input
+                  value={topicInput}
+                  onChange={(event) => setTopicInput(event.target.value)}
+                  placeholder="Ej: Redes neuronales para principiantes"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  maxLength={120}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Materiales adicionales</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setResourceType("none"); setResourceFile(null); }}
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${resourceType === "none" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600 hover:border-blue-200"}`}
+                  >
+                    <Brush size={18} />
+                    Solo whiteboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResourceType("image")}
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${resourceType === "image" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600 hover:border-blue-200"}`}
+                  >
+                    <ImageIcon size={18} />
+                    Imagen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResourceType("pdf")}
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${resourceType === "pdf" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600 hover:border-blue-200"}`}
+                  >
+                    <FileText size={18} />
+                    PDF
+                  </button>
+                </div>
+              </div>
+
+              {resourceType !== "none" && (
+                <div className="rounded-2xl border border-dashed border-gray-200 p-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Subir archivo {resourceType === "image" ? "(imagen)" : "(PDF)"}
+                  </label>
+                  <div className="flex flex-col gap-3">
+                    <input
+                      type="file"
+                      accept={resourceType === "image" ? "image/*" : "application/pdf"}
+                      onChange={(event) => setResourceFile(event.target.files?.[0] ?? null)}
+                      className="text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-blue-700 file:font-semibold hover:file:bg-blue-100"
+                    />
+                    {resourceFile && (
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <UploadCloud size={16} />
+                        {resourceFile.name}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {teachError && (
+                <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                  {teachError}
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsTeachModalOpen(false)}
+                  className="flex-1 rounded-xl border border-gray-200 py-3 text-gray-600 font-semibold hover:border-gray-300"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={teachLoading}
+                  className="flex-1 rounded-xl bg-gray-900 py-3 text-white font-semibold hover:bg-gray-800 transition disabled:opacity-70"
+                >
+                  {teachLoading ? "Creando sala..." : "Entrar a la sala"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
