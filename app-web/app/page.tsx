@@ -35,7 +35,7 @@ export default function Dashboard() {
       }
         
       if (profile) {
-        setCredits(profile.credits);
+        setCredits(profile.credits ?? 15);
       } else {
         // En caso de que el trigger falle o el usuario se haya registrado ANTES de crear el trigger
         setCredits(15);
